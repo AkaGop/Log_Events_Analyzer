@@ -1,11 +1,9 @@
 # analyzer.py
 from datetime import datetime
 import pandas as pd
-from config import ALARM_CODE_MAP
+from config import ALARM_DB # Use the new, more detailed ALARM_DB
 
 def perform_eda(df: pd.DataFrame) -> dict:
-    """A robust EDA function that defensively checks for the existence of columns."""
-    # This function remains correct and does not need changes.
     eda_results = {}
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -27,109 +25,115 @@ def perform_eda(df: pd.DataFrame) -> dict:
     return eda_results
 
 def format_time(timestamp_str: str) -> str:
-    """Helper function to format timestamp to HH:MM:SS."""
     try:
         return datetime.strptime(timestamp_str, "%Y/%m/%d %H:%M:%S.%f").strftime("%H:%M:%S")
     except ValueError:
         return timestamp_str
 
+# --- START OF HIGHLIGHTED FIX ---
 def analyze_data(df: pd.DataFrame) -> dict:
-    """Analyzes a dataframe of parsed events to calculate high-level and contextual KPIs."""
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
-        "total_duration_sec": 0.0, "alarms_with_context": [],
+        "total_downtime_sec": 0.0, "alarms_with_context": [],
         "magazine_ids": [], "operator_ids": [], "machine_statuses": [], "lot_ids": [],
         "login_events": [], "dock_events": [], "status_events": []
     }
     
     if df.empty: return summary
 
-    # Contextual data is always gathered from the full log
+    # General Context gathering (always runs)
     if 'details.OperatorID' in df.columns:
         summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
-        for _, row in df[df['EventName'] == 'RequestOperatorLogin'].dropna(subset=['details.OperatorID']).iterrows():
-            summary['login_events'].append({'Time': format_time(row['timestamp']), 'Operator ID': row['details.OperatorID']})
     if 'details.MagazineID' in df.columns:
         summary['magazine_ids'] = df['details.MagazineID'].dropna().unique().tolist()
-        for _, row in df[df['EventName'] == 'MagazineDocked'].dropna(subset=['details.MagazineID', 'details.PortID']).iterrows():
-            summary['dock_events'].append({'Time': format_time(row['timestamp']), 'Magazine ID': row['details.MagazineID'], 'Port ID': row['details.PortID']})
     if 'details.LotID' in df.columns:
         summary['lot_ids'] = df['details.LotID'].dropna().unique().tolist()
     if 'EventName' in df.columns:
-        status_df = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]
-        summary['machine_statuses'] = status_df['EventName'].str.replace("Control State ", "").unique().tolist()
-        for _, row in status_df.iterrows():
-            summary['status_events'].append({'Time': format_time(row['timestamp']), 'Status': row['EventName'].replace("Control State ", "")})
+        statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
+        summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
+        
+    for _, row in df[df['EventName'] == 'RequestOperatorLogin'].dropna(subset=['details.OperatorID']).iterrows():
+        summary['login_events'].append({'Time': format_time(row['timestamp']), 'Operator ID': row['details.OperatorID']})
+    for _, row in df[df['EventName'] == 'MagazineDocked'].dropna(subset=['details.MagazineID', 'details.PortID']).iterrows():
+        summary['dock_events'].append({'Time': format_time(row['timestamp']), 'Magazine ID': row['details.MagazineID'], 'Port ID': row['details.PortID']})
+    for _, row in df[df['EventName'].isin(['Control State Local', 'Control State Remote'])].iterrows():
+        summary['status_events'].append({'Time': format_time(row['timestamp']), 'Status': row['EventName'].replace("Control State ", "")})
 
+    analysis_scope_df = df
+    
     start_events = df[df['EventName'] == 'LOADSTART']
     if start_events.empty:
         summary['lot_id'] = "Dummy Lot or NA"
-        analysis_scope_df = df # Analyze all alarms if no job is found
     else:
         first_start_event = start_events.iloc[0]
         summary['lot_id'] = first_start_event.get('details.LotID', "N/A")
         summary['panel_count'] = int(first_start_event.get('details.PanelCount', 0))
-        summary['job_start_time'] = first_start_event['timestamp']
         
-        df_after_start = df[df['timestamp'] >= summary['job_start_time']]
-        end_events = df_after_start[df_after_start['EventName'] == 'MagToMagCompleted']
+        end_events = df[df['timestamp'] > first_start_event['timestamp']]
+        end_events = end_events[end_events['EventName'] == 'MagToMagCompleted']
         
         end_timestamp_str = df.iloc[-1]['timestamp']
-        summary['job_status'] = "Did not complete"
         if not end_events.empty:
             summary['job_status'] = "Completed"
             end_timestamp_str = end_events.iloc[0]['timestamp']
+        else:
+            summary['job_status'] = "Did not complete"
 
         try:
-            t_start = datetime.strptime(summary['job_start_time'], "%Y/%m/%d %H:%M:%S.%f")
+            t_start_str = first_start_event['timestamp']
+            t_start = datetime.strptime(t_start_str, "%Y/%m/%d %H:%M:%S.%f")
             t_end = datetime.strptime(end_timestamp_str, "%Y/%m/%d %H:%M:%S.%f")
-            summary['total_duration_sec'] = round((t_end - t_start).total_seconds(), 2)
-            analysis_scope_df = df[(df['timestamp'] >= t_start.strftime("%Y/%m/%d %H:%M:%S.%f")) & 
-                                   (df['timestamp'] <= t_end.strftime("%Y/%m/%d %H:%M:%S.%f"))]
+            analysis_scope_df = df[(df['timestamp'] >= t_start_str) & (df['timestamp'] <= end_timestamp_str)]
         except (ValueError, TypeError):
-            summary['job_status'] = "Time Calculation Error"
             analysis_scope_df = df
-    
-    # --- START OF NEW ALARM CORRELATION LOGIC ---
-    if 'details.AlarmID' in analysis_scope_df.columns:
-        alarm_events_in_scope = analysis_scope_df[analysis_scope_df['EventName'] == 'Alarm Set'].copy()
-        
-        if not alarm_events_in_scope.empty:
-            # 1. Build Panel Processing Windows
-            panel_windows = []
-            id_read_events = analysis_scope_df[analysis_scope_df['EventName'] == 'IDRead'].iterrows()
-            loaded_events = analysis_scope_df[analysis_scope_df['EventName'] == 'LoadedToTool'].iterrows()
-            
-            # This logic pairs an IDRead with the next available LoadedToTool event
-            try:
-                for _, id_row in id_read_events:
-                    for _, loaded_row in loaded_events:
-                        if loaded_row['timestamp'] > id_row['timestamp']:
-                            panel_windows.append({
-                                'panel_id': id_row.get('details.PanelID', 'Unknown'),
-                                'start_time': datetime.strptime(id_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f"),
-                                'end_time': datetime.strptime(loaded_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
-                            })
-                            break # Move to the next IDRead
-            except (ValueError, TypeError):
-                pass # If timestamps are bad, skip window creation
 
-            # 2. Correlate Alarms with Windows
-            for _, alarm_row in alarm_events_in_scope.iterrows():
-                alarm_time = datetime.strptime(alarm_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
-                alarm_desc = ALARM_CODE_MAP.get(int(alarm_row['details.AlarmID']), "Unknown Alarm")
-                
-                context = "Idle (Between Panels)"
-                for window in panel_windows:
-                    if window['start_time'] <= alarm_time <= window['end_time']:
-                        context = f"During Panel: {window['panel_id']}"
-                        break
-                
-                summary['alarms_with_context'].append({
-                    'Time': alarm_time.strftime("%H:%M:%S"),
-                    'Alarm Description': alarm_desc,
-                    'Context (Panel ID)': context
-                })
-    # --- END OF NEW ALARM CORRELATION LOGIC ---
+    # --- DOWNTIME CALCULATION LOGIC ---
+    downtime_incidents = []
+    total_downtime = 0.0
+
+    # Get all events that are classified as alarms or errors
+    fault_events = analysis_scope_df[
+        analysis_scope_df['details.AlarmID'].isin(
+            [k for k, v in ALARM_DB.items() if v['level'] in ['Error', 'Alarm']]
+        )
+    ].copy()
+    
+    full_log_list = df.to_dict('records')
+
+    for index, alarm_row in fault_events.iterrows():
+        alarm_time = datetime.strptime(alarm_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+        alarm_id = int(alarm_row['details.AlarmID'])
+        alarm_info = ALARM_DB.get(alarm_id, {'description': 'Unknown Alarm'})
+        
+        try:
+            alarm_log_index = df.index.get_loc(index)
+        except KeyError:
+            continue
+
+        recovery_time = None
+        for i in range(alarm_log_index + 1, len(full_log_list)):
+            next_event = full_log_list[i]
+            # Recovery is the first event that isn't another alarm
+            if next_event.get('EventName') != 'Alarm Set':
+                recovery_time = datetime.strptime(next_event['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+                break
+        
+        if recovery_time is None:
+            recovery_time = datetime.strptime(df.iloc[-1]['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+
+        duration = (recovery_time - alarm_time).total_seconds()
+        
+        if duration > 0:
+            total_downtime += duration
+            downtime_incidents.append({
+                'Alarm Time': alarm_time.strftime("%H:%M:%S"),
+                'Alarm Description': alarm_info['description'],
+                'Recovery Time': recovery_time.strftime("%H:%M:%S"),
+                'Downtime (sec)': round(duration, 2)
+            })
+
+    summary['total_downtime_sec'] = round(total_downtime, 2)
+    summary['alarms_with_context'] = downtime_incidents
             
     return summary
+# --- END OF HIGHLIGHTED FIX ---
