@@ -5,7 +5,7 @@ from config import ALARM_CODE_MAP
 
 def perform_eda(df: pd.DataFrame) -> dict:
     """A robust EDA function that defensively checks for the existence of columns."""
-    # This function remains unchanged and is already correct.
+    # This function remains unchanged.
     eda_results = {}
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -32,19 +32,26 @@ def analyze_data(df: pd.DataFrame) -> dict:
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
         "total_duration_sec": 0.0, "unique_alarms_count": 0, "alarms_list": [],
-        "magazine_id": "N/A", "operator_ids": [], "machine_status": "Unknown"
+        "magazine_ids": [], "operator_ids": [], "machine_statuses": [], "lot_ids": []
     }
     
     if df.empty: return summary
 
-    # --- Find ALL Unique Operator IDs across the entire log ---
+    # --- Find ALL Unique Context IDs across the entire log ---
     if 'details.OperatorID' in df.columns:
-        all_operators = df['details.OperatorID'].dropna().unique().tolist()
-        summary['operator_ids'] = all_operators
+        summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
+    if 'details.MagazineID' in df.columns:
+        summary['magazine_ids'] = df['details.MagazineID'].dropna().unique().tolist()
+    if 'details.LotID' in df.columns:
+        summary['lot_ids'] = df['details.LotID'].dropna().unique().tolist()
+    if 'EventName' in df.columns:
+        statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
+        summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
+
 
     start_events = df[df['EventName'] == 'LOADSTART']
     if start_events.empty:
-        summary['lot_id'] = "Test Lot / No Job"
+        summary['lot_id'] = "Test Lot / No Job" # Use fallback for main KPI
         return summary
         
     first_start_event = start_events.iloc[0]
@@ -72,16 +79,6 @@ def analyze_data(df: pd.DataFrame) -> dict:
         job_df = df[(df['timestamp'] >= t_start.strftime("%Y/%m/%d %H:%M:%S.%f")) & 
                     (df['timestamp'] <= t_end.strftime("%Y/%m/%d %H:%M:%S.%f"))]
         
-        # Find Magazine ID associated with the job
-        mag_id_event = job_df[job_df['EventName'] == 'RequestMagazineDock']
-        if not mag_id_event.empty:
-            summary['magazine_id'] = mag_id_event.iloc[0]['details.MagazineID']
-
-        # Find Machine Status during the job
-        status_event = job_df[job_df['EventName'].isin(['Control State Local', 'Control State Remote'])]
-        if not status_event.empty:
-            summary['machine_status'] = status_event.iloc[-1]['EventName'].replace("Control State ", "")
-
         if 'details.AlarmID' in job_df.columns:
             alarm_events_in_job = job_df[job_df['EventName'] == 'Alarm Set'].copy()
             if not alarm_events_in_job.empty:
