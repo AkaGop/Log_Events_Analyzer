@@ -5,6 +5,7 @@ from config import ALARM_CODE_MAP
 
 def perform_eda(df: pd.DataFrame) -> dict:
     """A robust EDA function that defensively checks for the existence of columns."""
+    # This function remains unchanged.
     eda_results = {}
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -25,16 +26,19 @@ def perform_eda(df: pd.DataFrame) -> dict:
         eda_results['alarm_table'] = pd.DataFrame()
     return eda_results
 
+# --- START OF HIGHLIGHTED FIX ---
 def analyze_data(df: pd.DataFrame) -> dict:
     """Analyzes a dataframe of parsed events to calculate high-level and contextual KPIs."""
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
         "total_duration_sec": 0.0, "unique_alarms_count": 0, "alarms_list": [],
-        "magazine_ids": [], "operator_ids": [], "machine_statuses": [], "lot_ids": []
+        "magazine_ids": [], "operator_ids": [], "machine_statuses": [], "lot_ids": [],
+        "key_timestamps": [] # New list to hold timed events
     }
     
     if df.empty: return summary
 
+    # --- Find ALL Unique Context IDs across the entire log ---
     if 'details.OperatorID' in df.columns:
         summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
     if 'details.MagazineID' in df.columns:
@@ -45,13 +49,27 @@ def analyze_data(df: pd.DataFrame) -> dict:
         statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
         summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
 
-    # --- START OF HIGHLIGHTED FIX ---
+    # --- Find all Login and Docking events ---
+    key_events = []
+    login_events = df[df['EventName'] == 'RequestOperatorLogin']
+    for index, row in login_events.iterrows():
+        op_id = row.get('details.OperatorID', 'N/A')
+        key_events.append({'Timestamp': row['timestamp'], 'Event': f"Operator {op_id} Login"})
+
+    dock_events = df[df['EventName'] == 'MagazineDocked']
+    for index, row in dock_events.iterrows():
+        mag_id = row.get('details.MagazineID', 'N/A')
+        port_id = row.get('details.PortID', '?')
+        key_events.append({'Timestamp': row['timestamp'], 'Event': f"Magazine {mag_id} Docked on Port {port_id}"})
+    
+    # Sort events chronologically and add to summary
+    summary['key_timestamps'] = sorted(key_events, key=lambda x: x['Timestamp'])
+
+
     start_events = df[df['EventName'] == 'LOADSTART']
     if start_events.empty:
-        # Use the requested default text if no job is found
         summary['lot_id'] = "Dummy Lot or NA"
         return summary
-    # --- END OF HIGHLIGHTED FIX ---
         
     first_start_event = start_events.iloc[0]
     summary['lot_id'] = first_start_event.get('details.LotID') if pd.notna(first_start_event.get('details.LotID')) else "N/A"
@@ -89,3 +107,4 @@ def analyze_data(df: pd.DataFrame) -> dict:
         summary['job_status'] = "Time Calculation Error"
             
     return summary
+# --- END OF HIGHLIGHTED FIX ---
