@@ -39,27 +39,43 @@ if uploaded_file:
     
     c1, c2, c3 = st.columns(3)
     c1.metric("Job Status", summary['job_status'])
-    c2.metric("Lot ID", str(summary['lot_id']))
+    c2.metric("First Lot ID", str(summary['lot_id'])) # Main KPI shows the first lot
     c3.metric("Total Panels", int(summary['panel_count']))
 
     st.markdown("---")
     
-    st.subheader("Job Context")
-    c1, c2, c3 = st.columns(3)
-    
-    c1.metric("Magazine ID", summary['magazine_id'])
-
     # --- START OF HIGHLIGHTED FIX ---
+    st.subheader("Job Context")
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.write("**Lot ID(s)**")
+        if summary['lot_ids']:
+            st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
+        else:
+            st.metric("Lot ID", "N/A")
+
     with c2:
+        st.write("**Magazine ID(s)**")
+        if summary['magazine_ids']:
+            st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
+        else:
+            st.metric("Magazine ID", "N/A")
+
+    with c3:
         st.write("**Operator(s) Logged In**")
         if summary['operator_ids']:
-            op_df = pd.DataFrame(summary['operator_ids'], columns=["Operator ID"])
-            st.dataframe(op_df, hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
             st.metric("Operator ID", "N/A")
-    # --- END OF HIGHLIGHTED FIX ---
 
-    c3.metric("Machine Status", summary['machine_status'])
+    with c4:
+        st.write("**Machine Status(es)**")
+        if summary['machine_statuses']:
+            st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True, use_container_width=True)
+        else:
+            st.metric("Machine Status", "Unknown")
+    # --- END OF HIGHLIGHTED FIX ---
 
     st.subheader("Alarms Triggered During Job")
     if summary['unique_alarms_count'] > 0:
@@ -71,4 +87,20 @@ if uploaded_file:
 
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
         st.subheader("Event Frequency (Entire Log)")
-        # ... (rest of the app remains the same)
+        if not eda_results['event_counts'].empty: st.bar_chart(eda_results['event_counts'])
+        else: st.info("No events to analyze.")
+        
+        st.subheader("Alarm Analysis (Entire Log)")
+        if not eda_results['alarm_counts'].empty:
+            st.write("Alarm Counts:"); st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:"); st.dataframe(eda_results['alarm_table'], use_container_width=True)
+        else: st.success("✅ No Alarms Found in Log")
+
+    st.header("Detailed Event Log")
+    if not df.empty:
+        cols = ["timestamp", "EventName", "details.AlarmID", "AlarmDescription", "details.LotID", "details.PanelCount", "details.MagazineID", "details.OperatorID"]
+        display_cols = [col for col in cols if col in df.columns]
+        st.dataframe(df[display_cols].style.format(na_rep='-'), hide_index=True, use_container_width=True)
+    else: st.warning("No meaningful events were found.")
+else:
+    st.title("Welcome"); st.info("⬅️ Please upload a log file to begin.")
