@@ -45,7 +45,7 @@ if uploaded_file:
     c1, c2, c3, c4 = st.columns(4)
 
     # --- START OF HIGHLIGHTED FIX ---
-    # Replaced dataframe logic with st.metric for single items and dataframe for multiple items.
+    # Replaced flawed logic with a robust if/elif/else structure.
     with c1:
         st.write("**Lot ID(s) Found**")
         if not summary['lot_ids']:
@@ -89,28 +89,22 @@ if uploaded_file:
     c1, c2, c3 = st.columns(3)
     with c1:
         st.write("**Operator Logins**")
-        if summary['login_events']:
-            st.dataframe(pd.DataFrame(summary['login_events']), hide_index=True)
-        else:
-            st.info("No login events.")
+        if summary['login_events']: st.dataframe(pd.DataFrame(summary['login_events']), hide_index=True)
+        else: st.info("No login events.")
     with c2:
         st.write("**Magazine Dock Events**")
-        if summary['dock_events']:
-            st.dataframe(pd.DataFrame(summary['dock_events']), hide_index=True)
-        else:
-            st.info("No dock events.")
+        if summary['dock_events']: st.dataframe(pd.DataFrame(summary['dock_events']), hide_index=True)
+        else: st.info("No dock events.")
     with c3:
         st.write("**Machine Status Changes**")
-        if summary['status_events']:
-            st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True)
-        else:
-            st.info("No status changes.")
+        if summary['status_events']: st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True)
+        else: st.info("No status changes.")
             
     st.markdown("---")
     
     alarm_title = "Alarms Triggered During Job" if summary['job_status'] != "No Job Found" else "Alarms Found in Log"
     st.subheader(alarm_title)
-    if summary.get('alarms_with_context'):
+    if summary['alarms_with_context']:
         alarm_df = pd.DataFrame(summary['alarms_with_context'])
         st.dataframe(alarm_df, hide_index=True, use_container_width=True)
     else:
