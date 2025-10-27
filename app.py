@@ -77,13 +77,17 @@ if uploaded_file:
 
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
         st.subheader("Event Frequency (Entire Log)")
-        if not eda_results['event_counts'].empty: st.bar_chart(eda_results['event_counts'])
-        else: st.info("No events to analyze.")
+        if not eda_results['event_counts'].empty:
+            st.bar_chart(eda_results['event_counts'])
+        else:
+            st.info("No events to analyze.")
         
         st.subheader("Alarm Analysis (Entire Log)")
         if not eda_results['alarm_counts'].empty:
-            st.write("Alarm Counts:"); st.bar_chart(eda_results['alarm_counts'])
-            st.write("Alarm Events Log:"); st.dataframe(eda_results['alarm_table'], use_container_width=True)
+            st.write("Alarm Counts:")
+            st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:")
+            st.dataframe(eda_results['alarm_table'], use_container_width=True)
         else:
             st.success("✅ No Alarms Found in the Entire Log")
 
