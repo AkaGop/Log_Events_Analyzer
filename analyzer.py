@@ -5,7 +5,6 @@ from config import ALARM_CODE_MAP
 
 def perform_eda(df: pd.DataFrame) -> dict:
     """A robust EDA function that defensively checks for the existence of columns."""
-    # This function remains unchanged.
     eda_results = {}
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -26,7 +25,6 @@ def perform_eda(df: pd.DataFrame) -> dict:
         eda_results['alarm_table'] = pd.DataFrame()
     return eda_results
 
-# --- START OF HIGHLIGHTED FIX ---
 def analyze_data(df: pd.DataFrame) -> dict:
     """Analyzes a dataframe of parsed events to calculate high-level and contextual KPIs."""
     summary = {
@@ -37,7 +35,6 @@ def analyze_data(df: pd.DataFrame) -> dict:
     
     if df.empty: return summary
 
-    # --- Find ALL Unique Context IDs across the entire log ---
     if 'details.OperatorID' in df.columns:
         summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
     if 'details.MagazineID' in df.columns:
@@ -48,11 +45,13 @@ def analyze_data(df: pd.DataFrame) -> dict:
         statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
         summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
 
-
+    # --- START OF HIGHLIGHTED FIX ---
     start_events = df[df['EventName'] == 'LOADSTART']
     if start_events.empty:
-        summary['lot_id'] = "Test Lot / No Job" # Use fallback for main KPI
+        # Use the requested default text if no job is found
+        summary['lot_id'] = "Dummy Lot or NA"
         return summary
+    # --- END OF HIGHLIGHTED FIX ---
         
     first_start_event = start_events.iloc[0]
     summary['lot_id'] = first_start_event.get('details.LotID') if pd.notna(first_start_event.get('details.LotID')) else "N/A"
@@ -90,4 +89,3 @@ def analyze_data(df: pd.DataFrame) -> dict:
         summary['job_status'] = "Time Calculation Error"
             
     return summary
-# --- END OF HIGHLIGHTED FIX ---
