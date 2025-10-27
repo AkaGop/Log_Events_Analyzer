@@ -1,3 +1,5 @@
+#### **`app.py` (Corrected and Final Version)**
+```python
 # app.py
 import streamlit as st
 import pandas as pd
@@ -23,8 +25,6 @@ if uploaded_file:
             if 'details.RCMD' in df.columns:
                 df['EventName'].fillna(df['details.RCMD'], inplace=True)
             df['EventName'].fillna("Unknown", inplace=True)
-        elif 'details.RCMD' in df.columns:
-            df['EventName'] = df['details.RCMD']
         else:
             df['EventName'] = "Unknown"
 
@@ -45,63 +45,54 @@ if uploaded_file:
     
     st.subheader("Log Context Overview")
     c1, c2, c3, c4 = st.columns(4)
-
-    # --- START OF HIGHLIGHTED FIX ---
-    # Replaced single-line conditionals with proper if/else blocks.
     with c1:
         st.write("**Lot ID(s) Found**")
-        if summary['lot_ids']:
-            st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
-        else:
-            st.info("Dummy Lot or NA")
-
+        if summary['lot_ids']: st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True)
+        else: st.info("Dummy Lot or NA")
     with c2:
         st.write("**Magazine ID(s) Used**")
-        if summary['magazine_ids']:
-            st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
-        else:
-            st.info("N/A")
-
+        if summary['magazine_ids']: st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True)
+        else: st.info("N/A")
     with c3:
         st.write("**Operator(s) Logged In**")
-        if summary['operator_ids']:
-            st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
-        else:
-            st.info("N/A")
-
+        if summary['operator_ids']: st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True)
+        else: st.info("N/A")
     with c4:
         st.write("**Machine Status(es)**")
-        if summary['machine_statuses']:
-            st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True, use_container_width=True)
-        else:
-            st.info("Unknown")
-    # --- END OF HIGHLIGHTED FIX ---
+        if summary['machine_statuses']: st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True)
+        else: st.info("Unknown")
+            
+    st.markdown("---")
 
+    # --- START OF HIGHLIGHTED FIX ---
+    # The keys in the summary dictionary are now correctly matched.
     st.subheader("Key Event Timestamps")
     c1, c2, c3 = st.columns(3)
+
     with c1:
         st.write("**Operator Logins**")
         if summary['login_events']:
-            st.dataframe(pd.DataFrame(summary['login_events']), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(summary['login_events']), hide_index=True)
         else:
             st.info("No login events.")
 
     with c2:
         st.write("**Magazine Dock Events**")
         if summary['dock_events']:
-            st.dataframe(pd.DataFrame(summary['dock_events']), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(summary['dock_events']), hide_index=True)
         else:
             st.info("No dock events.")
     
     with c3:
         st.write("**Machine Status Changes**")
         if summary['status_events']:
-            st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True)
         else:
             st.info("No status changes.")
-            
+    # --- END OF HIGHLIGHTED FIX ---
+    
     st.markdown("---")
-
+    
     alarm_title = "Alarms Triggered During Job" if summary['job_status'] != "No Job Found" else "Alarms Found in Log"
     st.subheader(alarm_title)
     if summary['unique_alarms_count'] > 0:
@@ -113,19 +104,14 @@ if uploaded_file:
 
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
         st.subheader("Event Frequency (Entire Log)")
-        if not eda_results['event_counts'].empty:
-            st.bar_chart(eda_results['event_counts'])
-        else:
-            st.info("No events to analyze.")
+        if not eda_results['event_counts'].empty: st.bar_chart(eda_results['event_counts'])
+        else: st.info("No events to analyze.")
         
         st.subheader("Alarm Analysis (Entire Log)")
         if not eda_results['alarm_counts'].empty:
-            st.write("Alarm Counts:")
-            st.bar_chart(eda_results['alarm_counts'])
-            st.write("Alarm Events Log:")
-            st.dataframe(eda_results['alarm_table'], use_container_width=True)
-        else:
-            st.success("✅ No Alarms Found in the Entire Log")
+            st.write("Alarm Counts:"); st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:"); st.dataframe(eda_results['alarm_table'], use_container_width=True)
+        else: st.success("✅ No Alarms Found in the Entire Log")
 
     st.header("Detailed Event Log")
     if not df.empty:
