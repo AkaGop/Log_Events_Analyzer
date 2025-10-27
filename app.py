@@ -34,18 +34,18 @@ if uploaded_file:
         summary = analyze_data(df)
         eda_results = perform_eda(df)
 
+    # --- START OF HIGHLIGHTED FIX ---
     st.header("Job Performance Dashboard")
     st.markdown("---")
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Job Status", summary['job_status'])
-    c2.metric("First Lot ID", str(summary['lot_id'])) # Main KPI shows the first lot
-    c3.metric("Total Panels", int(summary['panel_count']))
+    # Main KPIs updated to 2 columns, Job Status removed
+    c1, c2 = st.columns(2)
+    c1.metric("First Lot ID Found", str(summary['lot_id']))
+    c2.metric("Total Panels in First Lot", int(summary['panel_count']))
 
     st.markdown("---")
     
-    # --- START OF HIGHLIGHTED FIX ---
-    st.subheader("Job Context")
+    st.subheader("Log Context Overview")
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
@@ -53,7 +53,8 @@ if uploaded_file:
         if summary['lot_ids']:
             st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
-            st.metric("Lot ID", "N/A")
+            st.metric("Lot ID", "Dummy Lot or NA") # Fallback as requested
+    # --- END OF HIGHLIGHTED FIX ---
 
     with c2:
         st.write("**Magazine ID(s)**")
@@ -75,7 +76,6 @@ if uploaded_file:
             st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True, use_container_width=True)
         else:
             st.metric("Machine Status", "Unknown")
-    # --- END OF HIGHLIGHTED FIX ---
 
     st.subheader("Alarms Triggered During Job")
     if summary['unique_alarms_count'] > 0:
