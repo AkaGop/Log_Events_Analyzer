@@ -37,7 +37,6 @@ if uploaded_file:
     st.header("Job Performance Dashboard")
     st.markdown("---")
     
-    # KPIs updated to remove Job Status
     c1, c2 = st.columns(2)
     c1.metric("First Lot ID Found", str(summary['lot_id']))
     c2.metric("Total Panels in First Lot", int(summary['panel_count']))
@@ -46,24 +45,28 @@ if uploaded_file:
     
     st.subheader("Log Context Overview")
     c1, c2, c3, c4 = st.columns(4)
+
     with c1:
         st.write("**Lot ID(s)**")
         if summary['lot_ids']:
             st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
             st.metric("Lot ID", "Dummy Lot or NA")
+
     with c2:
         st.write("**Magazine ID(s)**")
         if summary['magazine_ids']:
             st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
             st.metric("Magazine ID", "N/A")
+
     with c3:
         st.write("**Operator(s) Logged In**")
         if summary['operator_ids']:
             st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
             st.metric("Operator ID", "N/A")
+
     with c4:
         st.write("**Machine Status(es)**")
         if summary['machine_statuses']:
@@ -71,14 +74,12 @@ if uploaded_file:
         else:
             st.metric("Machine Status", "Unknown")
 
-    # --- START OF HIGHLIGHTED FIX ---
     st.subheader("Key Timestamps")
     if summary['key_timestamps']:
         ts_df = pd.DataFrame(summary['key_timestamps'])
         st.dataframe(ts_df, hide_index=True, use_container_width=True)
     else:
         st.info("No operator login or magazine dock events were found in the log.")
-    # --- END OF HIGHLIGHTED FIX ---
 
     st.subheader("Alarms Triggered During Job")
     if summary['unique_alarms_count'] > 0:
@@ -88,5 +89,31 @@ if uploaded_file:
     else:
         st.success("✅ No Alarms Found During This Job")
 
+    # --- START OF HIGHLIGHTED FIX ---
+    # The EDA code is now correctly placed inside the indented 'with' block.
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
-        # ... (rest of the app remains the same)
+        st.subheader("Event Frequency (Entire Log)")
+        if not eda_results['event_counts'].empty:
+            st.bar_chart(eda_results['event_counts'])
+        else:
+            st.info("No events to analyze.")
+        
+        st.subheader("Alarm Analysis (Entire Log)")
+        if not eda_results['alarm_counts'].empty:
+            st.write("Alarm Counts:")
+            st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:")
+            st.dataframe(eda_results['alarm_table'], use_container_width=True)
+        else:
+            st.success("✅ No Alarms Found in the Entire Log")
+    # --- END OF HIGHLIGHTED FIX ---
+
+    st.header("Detailed Event Log")
+    if not df.empty:
+        cols = ["timestamp", "EventName", "details.AlarmID", "AlarmDescription", "details.LotID", "details.PanelCount", "details.MagazineID", "details.OperatorID"]
+        display_cols = [col for col in cols if col in df.columns]
+        st.dataframe(df[display_cols].style.format(na_rep='-'), hide_index=True, use_container_width=True)
+    else:
+        st.warning("No meaningful events were found.")
+else:
+    st.title("Welcome"); st.info("⬅️ Please upload a log file to begin.")
