@@ -44,42 +44,57 @@ if uploaded_file:
     st.markdown("---")
     
     st.subheader("Log Context Overview")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3) # Using 3 columns for better layout
 
     with c1:
-        st.write("**Lot ID(s)**")
+        st.write("**Lot ID(s) Found**")
         if summary['lot_ids']:
             st.dataframe(pd.DataFrame(summary['lot_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
-            st.metric("Lot ID", "Dummy Lot or NA")
+            st.info("Dummy Lot or NA")
 
     with c2:
-        st.write("**Magazine ID(s)**")
+        st.write("**Magazine ID(s) Used**")
         if summary['magazine_ids']:
             st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
-            st.metric("Magazine ID", "N/A")
+            st.info("No magazines found.")
 
     with c3:
         st.write("**Operator(s) Logged In**")
         if summary['operator_ids']:
             st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True, use_container_width=True)
         else:
-            st.metric("Operator ID", "N/A")
+            st.info("No operators found.")
+            
+    st.markdown("---")
 
-    with c4:
-        st.write("**Machine Status(es)**")
-        if summary['machine_statuses']:
-            st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True, use_container_width=True)
+    # --- START OF HIGHLIGHTED FIX ---
+    st.subheader("Key Event Timestamps")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.write("**Operator Logins**")
+        if summary['login_events']:
+            st.dataframe(pd.DataFrame(summary['login_events']), hide_index=True, use_container_width=True)
         else:
-            st.metric("Machine Status", "Unknown")
+            st.info("No login events.")
 
-    st.subheader("Key Timestamps")
-    if summary['key_timestamps']:
-        ts_df = pd.DataFrame(summary['key_timestamps'])
-        st.dataframe(ts_df, hide_index=True, use_container_width=True)
-    else:
-        st.info("No operator login or magazine dock events were found in the log.")
+    with c2:
+        st.write("**Magazine Dock Events**")
+        if summary['dock_events']:
+            st.dataframe(pd.DataFrame(summary['dock_events']), hide_index=True, use_container_width=True)
+        else:
+            st.info("No dock events.")
+    
+    with c3:
+        st.write("**Machine Status Changes**")
+        if summary['status_events']:
+            st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True, use_container_width=True)
+        else:
+            st.info("No status changes.")
+    # --- END OF HIGHLIGHTED FIX ---
+    st.markdown("---")
 
     st.subheader("Alarms Triggered During Job")
     if summary['unique_alarms_count'] > 0:
