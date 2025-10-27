@@ -1,7 +1,7 @@
 # analyzer.py
 from datetime import datetime
 import pandas as pd
-from config import ALARM_DB # Use the new, more detailed ALARM_DB
+from config import ALARM_DB
 
 def perform_eda(df: pd.DataFrame) -> dict:
     eda_results = {}
@@ -30,7 +30,6 @@ def format_time(timestamp_str: str) -> str:
     except ValueError:
         return timestamp_str
 
-# --- START OF HIGHLIGHTED FIX ---
 def analyze_data(df: pd.DataFrame) -> dict:
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
@@ -41,23 +40,21 @@ def analyze_data(df: pd.DataFrame) -> dict:
     
     if df.empty: return summary
 
-    # General Context gathering (always runs)
     if 'details.OperatorID' in df.columns:
         summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
+        for _, row in df[df['EventName'] == 'RequestOperatorLogin'].dropna(subset=['details.OperatorID']).iterrows():
+            summary['login_events'].append({'Time': format_time(row['timestamp']), 'Operator ID': row['details.OperatorID']})
     if 'details.MagazineID' in df.columns:
         summary['magazine_ids'] = df['details.MagazineID'].dropna().unique().tolist()
+        for _, row in df[df['EventName'] == 'MagazineDocked'].dropna(subset=['details.MagazineID', 'details.PortID']).iterrows():
+            summary['dock_events'].append({'Time': format_time(row['timestamp']), 'Magazine ID': row['details.MagazineID'], 'Port ID': row['details.PortID']})
     if 'details.LotID' in df.columns:
         summary['lot_ids'] = df['details.LotID'].dropna().unique().tolist()
     if 'EventName' in df.columns:
-        statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
-        summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
-        
-    for _, row in df[df['EventName'] == 'RequestOperatorLogin'].dropna(subset=['details.OperatorID']).iterrows():
-        summary['login_events'].append({'Time': format_time(row['timestamp']), 'Operator ID': row['details.OperatorID']})
-    for _, row in df[df['EventName'] == 'MagazineDocked'].dropna(subset=['details.MagazineID', 'details.PortID']).iterrows():
-        summary['dock_events'].append({'Time': format_time(row['timestamp']), 'Magazine ID': row['details.MagazineID'], 'Port ID': row['details.PortID']})
-    for _, row in df[df['EventName'].isin(['Control State Local', 'Control State Remote'])].iterrows():
-        summary['status_events'].append({'Time': format_time(row['timestamp']), 'Status': row['EventName'].replace("Control State ", "")})
+        status_df = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]
+        summary['machine_statuses'] = status_df['EventName'].str.replace("Control State ", "").unique().tolist()
+        for _, row in status_df.iterrows():
+            summary['status_events'].append({'Time': format_time(row['timestamp']), 'Status': row['EventName'].replace("Control State ", "")})
 
     analysis_scope_df = df
     
@@ -69,15 +66,14 @@ def analyze_data(df: pd.DataFrame) -> dict:
         summary['lot_id'] = first_start_event.get('details.LotID', "N/A")
         summary['panel_count'] = int(first_start_event.get('details.PanelCount', 0))
         
-        end_events = df[df['timestamp'] > first_start_event['timestamp']]
-        end_events = end_events[end_events['EventName'] == 'MagToMagCompleted']
+        df_after_start = df[df['timestamp'] >= first_start_event['timestamp']]
+        end_events = df_after_start[df_after_start['EventName'] == 'MagToMagCompleted']
         
         end_timestamp_str = df.iloc[-1]['timestamp']
+        summary['job_status'] = "Did not complete"
         if not end_events.empty:
             summary['job_status'] = "Completed"
             end_timestamp_str = end_events.iloc[0]['timestamp']
-        else:
-            summary['job_status'] = "Did not complete"
 
         try:
             t_start_str = first_start_event['timestamp']
@@ -85,15 +81,16 @@ def analyze_data(df: pd.DataFrame) -> dict:
             t_end = datetime.strptime(end_timestamp_str, "%Y/%m/%d %H:%M:%S.%f")
             analysis_scope_df = df[(df['timestamp'] >= t_start_str) & (df['timestamp'] <= end_timestamp_str)]
         except (ValueError, TypeError):
+            summary['job_status'] = "Time Calculation Error"
             analysis_scope_df = df
 
-    # --- DOWNTIME CALCULATION LOGIC ---
+    # --- START OF HIGHLIGHTED FIX ---
     downtime_incidents = []
     total_downtime = 0.0
 
-    # Get all events that are classified as alarms or errors
     fault_events = analysis_scope_df[
-        analysis_scope_df['details.AlarmID'].isin(
+        analysis_scope_df['details.AlarmID'].notna() &
+        pd.to_numeric(analysis_scope_df['details.AlarmID'], errors='coerce').isin(
             [k for k, v in ALARM_DB.items() if v['level'] in ['Error', 'Alarm']]
         )
     ].copy()
@@ -102,38 +99,12 @@ def analyze_data(df: pd.DataFrame) -> dict:
 
     for index, alarm_row in fault_events.iterrows():
         alarm_time = datetime.strptime(alarm_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+        
+        # Correctly get the alarm_id for the CURRENT row
         alarm_id = int(alarm_row['details.AlarmID'])
         alarm_info = ALARM_DB.get(alarm_id, {'description': 'Unknown Alarm'})
         
         try:
             alarm_log_index = df.index.get_loc(index)
         except KeyError:
-            continue
-
-        recovery_time = None
-        for i in range(alarm_log_index + 1, len(full_log_list)):
-            next_event = full_log_list[i]
-            # Recovery is the first event that isn't another alarm
-            if next_event.get('EventName') != 'Alarm Set':
-                recovery_time = datetime.strptime(next_event['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
-                break
-        
-        if recovery_time is None:
-            recovery_time = datetime.strptime(df.iloc[-1]['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
-
-        duration = (recovery_time - alarm_time).total_seconds()
-        
-        if duration > 0:
-            total_downtime += duration
-            downtime_incidents.append({
-                'Alarm Time': alarm_time.strftime("%H:%M:%S"),
-                'Alarm Description': alarm_info['description'],
-                'Recovery Time': recovery_time.strftime("%H:%M:%S"),
-                'Downtime (sec)': round(duration, 2)
-            })
-
-    summary['total_downtime_sec'] = round(total_downtime, 2)
-    summary['alarms_with_context'] = downtime_incidents
-            
-    return summary
-# --- END OF HIGHLIGHTED FIX ---
+            c
