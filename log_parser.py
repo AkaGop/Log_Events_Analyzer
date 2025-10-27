@@ -4,11 +4,39 @@ from io import StringIO
 from config import CEID_MAP, RPTID_MAP
 
 def _parse_s6f11_report(full_text: str) -> dict:
-    # This function is correct.
-    # ... (code from previous response)
+    data = {}
+    tokens = re.findall(r"<(?:A|U\d|B)\s\[\d+\]\s(?:'([^']*)'|(\d+))>", full_text)
+    flat_values = [s if s else i for s, i in tokens]
+    if len(flat_values) < 2: return {}
+    try:
+        data['DATAID'], data['CEID'] = int(flat_values[0]), int(flat_values[1])
+    except (ValueError, IndexError): return {}
 
-# --- START OF HIGHLIGHTED FIX ---
-# Corrected the function name from the erroneous '_parse_s2f4p_command'
+    if "Alarm" in CEID_MAP.get(data['CEID'], ''): data['AlarmID'] = data['CEID']
+    
+    payload = flat_values[2:]
+    rptid, rptid_index = None, -1
+    for i, val in enumerate(payload):
+        if val.isdigit():
+            rptid, rptid_index = int(val), i
+            break
+            
+    if rptid in RPTID_MAP:
+        data['RPTID'] = rptid
+        data_payload = payload[rptid_index + 1:]
+        
+        if rptid == 101 and len(data_payload) > 1:
+            data['AlarmID'] = data_payload[1]
+
+        data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
+        for i, name in enumerate(RPTID_MAP.get(rptid, [])):
+            if i < len(data_payload_filtered): data[name] = data_payload_filtered[i]
+            
+    elif data['CEID'] in [18, 113, 114]:
+        data['AlarmID'] = data['CEID']
+
+    return data
+
 def _parse_s2f49_command(full_text: str) -> dict:
     data = {}
     rcmd_match = re.search(r"<\s*A\s*\[\d+\]\s*'([A-Z_]{5,})'", full_text)
@@ -50,11 +78,9 @@ def parse_log_file(uploaded_file):
                 full_text = "".join(block_lines)
                 details = {}
                 if msg_name == 'S6F11': details = _parse_s6f11_report(full_text)
-                # This line now calls the correctly named function
                 elif msg_name == 'S2F49': details = _parse_s2f49_command(full_text)
                 if details: event['details'] = details
         if 'details' in event and event['details']:
             events.append(event)
         i += 1
     return events
-# --- END OF HIGHLIGHTED FIX ---
