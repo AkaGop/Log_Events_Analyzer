@@ -107,4 +107,31 @@ def analyze_data(df: pd.DataFrame) -> dict:
         try:
             alarm_log_index = df.index.get_loc(index)
         except KeyError:
-            c
+            continue
+
+        recovery_time = None
+        for i in range(alarm_log_index + 1, len(full_log_list)):
+            next_event = full_log_list[i]
+            if next_event.get('EventName') != 'Alarm Set':
+                recovery_time = datetime.strptime(next_event['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+                break
+        
+        if recovery_time is None:
+            recovery_time = datetime.strptime(df.iloc[-1]['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+
+        duration = (recovery_time - alarm_time).total_seconds()
+        
+        if duration > 0:
+            total_downtime += duration
+            downtime_incidents.append({
+                'Alarm Time': alarm_time.strftime("%H:%M:%S"),
+                'Alarm Description': alarm_info['description'],
+                'Recovery Time': recovery_time.strftime("%H:%M:%S"),
+                'Downtime (sec)': round(duration, 2)
+            })
+
+    summary['total_downtime_sec'] = round(total_downtime, 2)
+    summary['alarms_with_context'] = downtime_incidents
+    # --- END OF HIGHLIGHTED FIX ---
+            
+    return summary
