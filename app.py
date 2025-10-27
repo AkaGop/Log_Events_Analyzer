@@ -100,3 +100,39 @@ if uploaded_file:
         else:
             st.info("No dock events.")
     with c3:
+        st.write("**Machine Status Changes**")
+        if summary['status_events']:
+            st.dataframe(pd.DataFrame(summary['status_events']), hide_index=True)
+        else:
+            st.info("No status changes.")
+            
+    st.markdown("---")
+    
+    alarm_title = "Alarms Triggered During Job" if summary['job_status'] != "No Job Found" else "Alarms Found in Log"
+    st.subheader(alarm_title)
+    if summary.get('alarms_with_context'):
+        alarm_df = pd.DataFrame(summary['alarms_with_context'])
+        st.dataframe(alarm_df, hide_index=True, use_container_width=True)
+    else:
+        st.success("✅ No Alarms Found")
+
+    with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
+        st.subheader("Event Frequency (Entire Log)")
+        if not eda_results['event_counts'].empty: st.bar_chart(eda_results['event_counts'])
+        else: st.info("No events to analyze.")
+        
+        st.subheader("Alarm Analysis (Entire Log)")
+        if not eda_results['alarm_counts'].empty:
+            st.write("Alarm Counts:"); st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:"); st.dataframe(eda_results['alarm_table'], use_container_width=True)
+        else: st.success("✅ No Alarms Found in the Entire Log")
+
+    st.header("Detailed Event Log")
+    if not df.empty:
+        cols = ["timestamp", "EventName", "details.AlarmID", "AlarmDescription", "details.LotID", "details.PanelCount", "details.MagazineID", "details.OperatorID"]
+        display_cols = [col for col in cols if col in df.columns]
+        st.dataframe(df[display_cols].style.format(na_rep='-'), hide_index=True, use_container_width=True)
+    else:
+        st.warning("No meaningful events were found.")
+else:
+    st.title("Welcome"); st.info("⬅️ Please upload a log file to begin.")
