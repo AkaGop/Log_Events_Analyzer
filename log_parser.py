@@ -6,30 +6,24 @@ from config import CEID_MAP, RPTID_MAP
 def _parse_s6f11_report(full_text: str) -> dict:
     """Final, robust, token-based parser for S6F11 reports."""
     data = {}
-    # This regex is quite effective at tokenizing the SECS-II text format.
     tokens = re.findall(r"<(?:A|U\d|B)\s\[\d+\]\s(?:'([^']*)'|(\d+))>", full_text)
     flat_values = [s if s else i for s, i in tokens]
 
-    # An S6F11 report needs at least a DATAID, CEID, and RPTID list to be valid
     if len(flat_values) < 3: return {}
 
     try:
-        # According to the log and spec, the first two U4/U2 values are DATAID and CEID
         dataid = int(flat_values[0])
         ceid = int(flat_values[1])
         data['DATAID'] = dataid
         data['CEID'] = ceid
     except (ValueError, IndexError): 
-        return {} # Not a valid S6F11 if these can't be parsed
+        return {}
 
     if "Alarm" in CEID_MAP.get(ceid, ''):
-        # If the event is an alarm, the AlarmID is often the CEID itself or in the payload
         data['AlarmID'] = ceid
 
-    # The payload containing the RPTID and its data follows the CEID
     payload = flat_values[2:]
     
-    # Find the RPTID, which should be the first integer in the payload
     rptid = None
     rptid_index = -1
     for i, val in enumerate(payload):
@@ -40,10 +34,8 @@ def _parse_s6f11_report(full_text: str) -> dict:
             
     if rptid in RPTID_MAP:
         data['RPTID'] = rptid
-        # The actual data for the report follows the RPTID
         data_payload = payload[rptid_index + 1:]
         
-        # A simple but effective filter for timestamps to prevent misalignment of data fields
         data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
 
         field_names = RPTID_MAP.get(rptid, [])
@@ -53,20 +45,34 @@ def _parse_s6f11_report(full_text: str) -> dict:
             
     return data
 
+# --- START OF HIGHLIGHTED FIX ---
 def _parse_s2f49_command(full_text: str) -> dict:
-    """Parses S2F49 Remote Commands."""
+    """A more robust parser for S2F49 commands that handles complex structures."""
     data = {}
+    # First, get the main command name (RCMD)
     rcmd_match = re.search(r"<\s*A\s*\[\d+\]\s*'([A-Z_]{5,})'", full_text)
-    if rcmd_match: data['RCMD'] = rcmd_match.group(1)
-    
-    lotid_match = re.search(r"'LOTID'\s*>\s*<A\[\d+\]\s*'([^']*)'", full_text, re.IGNORECASE)
-    if lotid_match: data['LotID'] = lotid_match.group(1)
-    
-    # Correctly parsing panel count from the <L [n]> structure
-    panels_match = re.search(r"'LOTPANELS'\s*>\s*<L\s\[(\d+)\]", full_text, re.IGNORECASE)
-    if panels_match: data['PanelCount'] = int(panels_match.group(1))
+    if rcmd_match:
+        data['RCMD'] = rcmd_match.group(1)
 
+    # Tokenize the parameters to find key-value pairs
+    # This correctly finds 'LOTID' and then gets the next value in the list
+    tokens = re.findall(r"'([^']*)'", full_text)
+    try:
+        if 'LOTID' in tokens:
+            lotid_index = tokens.index('LOTID')
+            if lotid_index + 1 < len(tokens):
+                data['LotID'] = tokens[lotid_index + 1]
+    except (ValueError, IndexError):
+        # If LotID isn't found, we can simply pass
+        pass
+
+    # Correctly parse PanelCount from the <L [n]> list structure
+    panels_match = re.search(r"'LOTPANELS'\s*>\s*<L\s\[(\d+)\]", full_text, re.IGNORECASE)
+    if panels_match:
+        data['PanelCount'] = int(panels_match.group(1))
+        
     return data
+# --- END OF HIGHLIGHTED FIX ---
 
 def parse_log_file(uploaded_file):
     """Main function to parse the uploaded log file line by line."""
@@ -97,7 +103,6 @@ def parse_log_file(uploaded_file):
         
         event = {"timestamp": timestamp, "msg_name": msg_name}
         
-        # Check if the line indicates a multi-line message block follows
         if ("Core:Send" in log_type or "Core:Receive" in log_type) and i + 1 < len(lines) and lines[i+1].strip().startswith('<'):
             j = i + 1
             block_lines = []
@@ -105,7 +110,7 @@ def parse_log_file(uploaded_file):
                 block_lines.append(lines[j])
                 j += 1
             
-            i = j # Move the main loop index past this block
+            i = j
             
             if block_lines:
                 full_text = "".join(block_lines)
@@ -118,7 +123,6 @@ def parse_log_file(uploaded_file):
                 if details: 
                     event['details'] = details
         
-        # Only add events that have successfully parsed details
         if 'details' in event and event['details']:
             events.append(event)
             
