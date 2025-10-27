@@ -1,7 +1,7 @@
 # config.py
 """
 Single source of truth for all static configuration data.
-Includes the COMPLETE alarm code mapping from the specification document.
+Includes the complete alarm code mapping from the specification document.
 """
 
 CEID_MAP = {
@@ -31,7 +31,6 @@ RPTID_MAP = {
 }
 
 # --- COMPLETE ALARM DATABASE ---
-# Transcribed from '01_LogCodeList_FELP File Version History.pdf'
 ALARM_DB = {
     1: {'description': '<0001>CPU error', 'level': 'Error'},
     2: {'description': '<0002>SafetyPLC error', 'level': 'Error'},
