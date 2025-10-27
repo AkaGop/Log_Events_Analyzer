@@ -89,8 +89,6 @@ if uploaded_file:
     else:
         st.success("✅ No Alarms Found During This Job")
 
-    # --- START OF HIGHLIGHTED FIX ---
-    # The EDA code is now correctly placed inside the indented 'with' block.
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
         st.subheader("Event Frequency (Entire Log)")
         if not eda_results['event_counts'].empty:
@@ -106,7 +104,6 @@ if uploaded_file:
             st.dataframe(eda_results['alarm_table'], use_container_width=True)
         else:
             st.success("✅ No Alarms Found in the Entire Log")
-    # --- END OF HIGHLIGHTED FIX ---
 
     st.header("Detailed Event Log")
     if not df.empty:
