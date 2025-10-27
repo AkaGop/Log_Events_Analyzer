@@ -4,128 +4,75 @@ from io import StringIO
 from config import CEID_MAP, RPTID_MAP
 
 def _parse_s6f11_report(full_text: str) -> dict:
-    """Final, robust, token-based parser for S6F11 reports."""
     data = {}
     tokens = re.findall(r"<(?:A|U\d|B)\s\[\d+\]\s(?:'([^']*)'|(\d+))>", full_text)
     flat_values = [s if s else i for s, i in tokens]
-
-    if len(flat_values) < 3: return {}
-
+    if len(flat_values) < 2: return {}
     try:
-        dataid = int(flat_values[0])
-        ceid = int(flat_values[1])
-        data['DATAID'] = dataid
-        data['CEID'] = ceid
-    except (ValueError, IndexError): 
-        return {}
+        data['DATAID'], data['CEID'] = int(flat_values[0]), int(flat_values[1])
+    except (ValueError, IndexError): return {}
 
-    if "Alarm" in CEID_MAP.get(ceid, ''):
-        data['AlarmID'] = ceid
-
-    payload = flat_values[2:]
+    if "Alarm" in CEID_MAP.get(data['CEID'], ''): data['AlarmID'] = data['CEID']
     
-    rptid = None
-    rptid_index = -1
+    payload = flat_values[2:]
+    rptid, rptid_index = None, -1
     for i, val in enumerate(payload):
         if val.isdigit():
-            rptid = int(val)
-            rptid_index = i
+            rptid, rptid_index = int(val), i
             break
             
     if rptid in RPTID_MAP:
         data['RPTID'] = rptid
         data_payload = payload[rptid_index + 1:]
-        
         data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
-
-        field_names = RPTID_MAP.get(rptid, [])
-        for i, name in enumerate(field_names):
-            if i < len(data_payload_filtered):
-                data[name] = data_payload_filtered[i]
-            
+        for i, name in enumerate(RPTID_MAP.get(rptid, [])):
+            if i < len(data_payload_filtered): data[name] = data_payload_filtered[i]
     return data
 
-# --- START OF HIGHLIGHTED FIX ---
 def _parse_s2f49_command(full_text: str) -> dict:
-    """A more robust parser for S2F49 commands that handles complex structures."""
     data = {}
-    # First, get the main command name (RCMD)
     rcmd_match = re.search(r"<\s*A\s*\[\d+\]\s*'([A-Z_]{5,})'", full_text)
-    if rcmd_match:
-        data['RCMD'] = rcmd_match.group(1)
-
-    # Tokenize the parameters to find key-value pairs
-    # This correctly finds 'LOTID' and then gets the next value in the list
+    if rcmd_match: data['RCMD'] = rcmd_match.group(1)
+    
     tokens = re.findall(r"'([^']*)'", full_text)
     try:
         if 'LOTID' in tokens:
             lotid_index = tokens.index('LOTID')
-            if lotid_index + 1 < len(tokens):
-                data['LotID'] = tokens[lotid_index + 1]
-    except (ValueError, IndexError):
-        # If LotID isn't found, we can simply pass
-        pass
+            if lotid_index + 1 < len(tokens): data['LotID'] = tokens[lotid_index + 1]
+    except (ValueError, IndexError): pass
 
-    # Correctly parse PanelCount from the <L [n]> list structure
     panels_match = re.search(r"'LOTPANELS'\s*>\s*<L\s\[(\d+)\]", full_text, re.IGNORECASE)
-    if panels_match:
-        data['PanelCount'] = int(panels_match.group(1))
-        
+    if panels_match: data['PanelCount'] = int(panels_match.group(1))
     return data
-# --- END OF HIGHLIGHTED FIX ---
 
 def parse_log_file(uploaded_file):
-    """Main function to parse the uploaded log file line by line."""
     events = []
     if not uploaded_file: return events
-    
-    try: 
-        lines = StringIO(uploaded_file.getvalue().decode("utf-8")).readlines()
-    except UnicodeDecodeError: 
-        lines = StringIO(uploaded_file.getvalue().decode("latin-1", errors='ignore')).readlines()
+    try: lines = StringIO(uploaded_file.getvalue().decode("utf-8")).readlines()
+    except: lines = StringIO(uploaded_file.getvalue().decode("latin-1", errors='ignore')).readlines()
     
     i = 0
     while i < len(lines):
         line = lines[i].strip()
-        if not line: 
-            i += 1
-            continue
-            
+        if not line: i+= 1; continue
         header_match = re.match(r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d+),\[([^\]]+)\],(.*)", line)
-        if not header_match: 
-            i += 1
-            continue
-            
+        if not header_match: i += 1; continue
         timestamp, log_type, message_part = header_match.groups()
-        
         msg_match = re.search(r"MessageName=(\w+)|Message=.*?:\'(\w+)\'", message_part)
         msg_name = (msg_match.group(1) or msg_match.group(2)) if msg_match else "N/A"
-        
         event = {"timestamp": timestamp, "msg_name": msg_name}
-        
         if ("Core:Send" in log_type or "Core:Receive" in log_type) and i + 1 < len(lines) and lines[i+1].strip().startswith('<'):
-            j = i + 1
-            block_lines = []
+            j = i + 1; block_lines = []
             while j < len(lines) and lines[j].strip() != '.':
-                block_lines.append(lines[j])
-                j += 1
-            
+                block_lines.append(lines[j]); j += 1
             i = j
-            
             if block_lines:
                 full_text = "".join(block_lines)
                 details = {}
-                if msg_name == 'S6F11': 
-                    details = _parse_s6f11_report(full_text)
-                elif msg_name == 'S2F49': 
-                    details = _parse_s2f49_command(full_text)
-                
-                if details: 
-                    event['details'] = details
-        
+                if msg_name == 'S6F11': details = _parse_s6f11_report(full_text)
+                elif msg_name == 'S2F49': details = _parse_s2f49_command(full_text)
+                if details: event['details'] = details
         if 'details' in event and event['details']:
             events.append(event)
-            
         i += 1
-        
     return events
