@@ -5,7 +5,6 @@ from config import ALARM_CODE_MAP
 
 def perform_eda(df: pd.DataFrame) -> dict:
     """A robust EDA function that defensively checks for the existence of columns."""
-    # This function remains unchanged.
     eda_results = {}
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -26,19 +25,19 @@ def perform_eda(df: pd.DataFrame) -> dict:
         eda_results['alarm_table'] = pd.DataFrame()
     return eda_results
 
-# --- START OF HIGHLIGHTED FIX ---
 def analyze_data(df: pd.DataFrame) -> dict:
     """Analyzes a dataframe of parsed events to calculate high-level and contextual KPIs."""
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
         "total_duration_sec": 0.0, "unique_alarms_count": 0, "alarms_list": [],
         "magazine_ids": [], "operator_ids": [], "machine_statuses": [], "lot_ids": [],
-        "key_timestamps": [] # New list to hold timed events
+        "key_timestamps": []
     }
     
     if df.empty: return summary
 
-    # --- Find ALL Unique Context IDs across the entire log ---
+    # --- START OF HIGHLIGHTED FIX ---
+    # This logic is now at the top, so it always runs.
     if 'details.OperatorID' in df.columns:
         summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
     if 'details.MagazineID' in df.columns:
@@ -49,7 +48,6 @@ def analyze_data(df: pd.DataFrame) -> dict:
         statuses = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]['EventName'].unique()
         summary['machine_statuses'] = [s.replace("Control State ", "") for s in statuses]
 
-    # --- Find all Login and Docking events ---
     key_events = []
     login_events = df[df['EventName'] == 'RequestOperatorLogin']
     for index, row in login_events.iterrows():
@@ -62,9 +60,8 @@ def analyze_data(df: pd.DataFrame) -> dict:
         port_id = row.get('details.PortID', '?')
         key_events.append({'Timestamp': row['timestamp'], 'Event': f"Magazine {mag_id} Docked on Port {port_id}"})
     
-    # Sort events chronologically and add to summary
     summary['key_timestamps'] = sorted(key_events, key=lambda x: x['Timestamp'])
-
+    # --- END OF HIGHLIGHTED FIX ---
 
     start_events = df[df['EventName'] == 'LOADSTART']
     if start_events.empty:
@@ -102,9 +99,7 @@ def analyze_data(df: pd.DataFrame) -> dict:
                 alarm_events_in_job['AlarmDescription'] = pd.to_numeric(alarm_events_in_job['details.AlarmID'], errors='coerce').map(ALARM_CODE_MAP)
                 summary['alarms_list'] = alarm_events_in_job['AlarmDescription'].dropna().unique().tolist()
                 summary['unique_alarms_count'] = len(summary['alarms_list'])
-
     except (ValueError, TypeError):
         summary['job_status'] = "Time Calculation Error"
             
     return summary
-# --- END OF HIGHLIGHTED FIX ---
