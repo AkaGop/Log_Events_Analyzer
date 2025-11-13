@@ -108,6 +108,7 @@ def analyze_data(df: pd.DataFrame) -> dict:
     # --- New Analysis Function Calls ---
     summary['mapping_details'] = get_mapping_details(df)
     summary['panel_info'] = get_panel_slot_map(df)
+    summary['panel_count'] = len(summary['panel_info']['panel_ids'])
 
     # --- Job and Downtime Analysis (largely unchanged) ---
     start_events = df[df['EventName'] == 'LOADSTART']
