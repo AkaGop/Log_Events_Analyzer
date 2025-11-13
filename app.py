@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from log_parser import parse_log_file
 from config import CEID_MAP, ALARM_DB
-from analyzer import analyze_data, perform_eda
+from analyzer import analyze_data, perform_eda # analyzer functions are now updated
 
 st.set_page_config(page_title="Hirata Log Analyzer", layout="wide")
 st.title("Hirata Equipment Log Analyzer")
@@ -37,10 +37,12 @@ if uploaded_file:
     st.header("Job Performance Dashboard")
     st.markdown("---")
     
-    c1, c2, c3 = st.columns(3)
+    # MODIFIED: Added Mapping metrics
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("First Lot ID Found", str(summary['lot_id']))
-    c2.metric("Total Panels in First Lot", int(summary['panel_count']))
-    c3.metric("Total Downtime (sec)", f"{summary['total_downtime_sec']:.2f}")
+    c2.metric("Total Panels Processed", summary['panel_count'])
+    c3.metric("Mapping Start Time", summary['mapping_details']['start_time'])
+    c4.metric("Mapping Duration (sec)", f"{summary['mapping_details']['duration_sec']:.2f}")
 
     st.markdown("---")
     
@@ -48,23 +50,32 @@ if uploaded_file:
     c1, c2, c3 = st.columns(3)
     with c1:
         st.write("**Operator(s) Logged In**")
-        if summary['operator_ids']:
-            st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True)
-        else:
-            st.info("N/A")
+        st.dataframe(pd.DataFrame(summary['operator_ids'], columns=["ID"]), hide_index=True)
     with c2:
         st.write("**Magazine ID(s) Used**")
-        if summary['magazine_ids']:
-            st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True)
-        else:
-            st.info("N/A")
+        st.dataframe(pd.DataFrame(summary['magazine_ids'], columns=["ID"]), hide_index=True)
     with c3:
         st.write("**Machine Status(es)**")
-        if summary['machine_statuses']:
-            st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True)
-        else:
-            st.info("Unknown")
+        st.dataframe(pd.DataFrame(summary['machine_statuses'], columns=["Status"]), hide_index=True)
             
+    st.markdown("---")
+
+    # NEW SECTION: Display Panel and Slot information
+    st.subheader("Panel & Slot Details")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.write("**Unique Panel IDs Found**")
+        if summary['panel_info']['panel_ids']:
+            st.dataframe(pd.DataFrame(summary['panel_info']['panel_ids'], columns=["Panel ID"]), hide_index=True)
+        else:
+            st.info("No Panel IDs found.")
+    with col2:
+        st.write("**Panel to Magazine Slot Map**")
+        if not summary['panel_info']['panel_slot_map'].empty:
+            st.dataframe(summary['panel_info']['panel_slot_map'], hide_index=True, use_container_width=True)
+        else:
+            st.info("No Panel/Slot mapping found.")
+
     st.markdown("---")
     
     alarm_title = "Downtime Analysis"
@@ -76,17 +87,12 @@ if uploaded_file:
         st.success("✅ No Downtime Incidents Found")
 
     with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
+        # (EDA section remains the same)
         st.subheader("Event Frequency (Entire Log)")
-        if not eda_results['event_counts'].empty:
-            st.bar_chart(eda_results['event_counts'])
-        else:
-            st.info("No events to analyze.")
-        
+        st.bar_chart(eda_results['event_counts'])
         st.subheader("Alarm Analysis (Entire Log)")
         if not eda_results['alarm_counts'].empty:
-            st.write("Alarm Counts:")
             st.bar_chart(eda_results['alarm_counts'])
-            st.write("Alarm Events Log:")
             st.dataframe(eda_results['alarm_table'], use_container_width=True)
         else:
             st.success("✅ No Alarms Found in the Entire Log")
