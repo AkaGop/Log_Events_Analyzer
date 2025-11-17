@@ -1,9 +1,7 @@
-# log_parser.py
+# log_analyzer/log_parser.py
 import re
 from io import StringIO
-# MODIFIED: Changed to a relative import
 from .config import CEID_MAP, RPTID_MAP
-
 
 def _parse_s6f11_report(full_text: str) -> dict:
     data = {}
