@@ -1,14 +1,20 @@
 # app.py
 import streamlit as st
 import pandas as pd
-# MODIFIED: Changed to relative imports
-from .log_parser import parse_log_file
-from .config import CEID_MAP, ALARM_DB
-from .analyzer import analyze_data, perform_eda
+import sys
+import os
+
+# --- THIS IS THE FIX ---
+# Add the script's directory to Python's path to ensure it can find the other modules.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# ---------------------
+
+from log_parser import parse_log_file
+from config import CEID_MAP, ALARM_DB
+from analyzer import analyze_data, perform_eda
 
 st.set_page_config(page_title="Hirata Log Analyzer", layout="wide")
 st.title("Hirata Equipment Log Analyzer")
-
 # (Sidebar code remains the same)
 # ...
 
