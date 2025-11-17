@@ -82,8 +82,28 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
     return details
 
 def perform_eda(df: pd.DataFrame) -> dict:
-    # This function remains unchanged.
-    # ...
+    eda_results = {}
+    if 'EventName' in df.columns:
+        eda_results['event_counts'] = df['EventName'].value_counts()
+    else:
+        eda_results['event_counts'] = pd.Series(dtype='int64')
+
+    if 'details.AlarmID' in df.columns and 'AlarmDescription' in df.columns:
+        alarm_events = df[df['EventName'].isin(['Alarm Set', 'AlarmSet'])].copy()
+        if not alarm_events.empty:
+            eda_results['alarm_counts'] = alarm_events['AlarmDescription'].value_counts()
+            display_cols = ['timestamp', 'EventName', 'details.AlarmID', 'AlarmDescription']
+            eda_results['alarm_table'] = alarm_events[[c for c in display_cols if c in alarm_events.columns]]
+        else:
+            eda_results['alarm_counts'] = pd.Series(dtype='int64')
+            eda_results['alarm_table'] = pd.DataFrame()
+    else:
+        eda_results['alarm_counts'] = pd.Series(dtype='int64')
+        eda_results['alarm_table'] = pd.DataFrame()
+        
+    # --- THIS IS THE FIX ---
+    # The stray return statement has been removed.
+    # The function now correctly returns the dictionary it has built.
     return eda_results
 
 def format_time(timestamp_str: str) -> str:
