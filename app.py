@@ -1,9 +1,10 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from log_parser import parse_log_file
-from config import CEID_MAP, ALARM_DB
-from analyzer import analyze_data, perform_eda
+# MODIFIED: Changed to relative imports
+from .log_parser import parse_log_file
+from .config import CEID_MAP, ALARM_DB
+from .analyzer import analyze_data, perform_eda
 
 st.set_page_config(page_title="Hirata Log Analyzer", layout="wide")
 st.title("Hirata Equipment Log Analyzer")
