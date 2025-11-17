@@ -1,38 +1,46 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import sys
-import os
-
-# --- THIS IS THE FIX ---
-# Add the script's directory to Python's path to ensure it can find the other modules.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# ---------------------
-
-from log_parser import parse_log_file
-from config import CEID_MAP, ALARM_DB
-from analyzer import analyze_data, perform_eda
+from log_analyzer.log_parser import parse_log_file
+from log_analyzer.config import CEID_MAP, ALARM_DB
+from log_analyzer.analyzer import analyze_data, perform_eda
 
 st.set_page_config(page_title="Hirata Log Analyzer", layout="wide")
 st.title("Hirata Equipment Log Analyzer")
-# (Sidebar code remains the same)
-# ...
+
+with st.sidebar:
+    st.title("🤖 Log Analyzer")
+    uploaded_file = st.file_uploader("Upload Hirata Log File", type=['txt', 'log'])
+    st.info("This tool provides engineering analysis of Hirata SECS/GEM logs.")
 
 if uploaded_file:
     with st.spinner("Analyzing log file..."):
-        # (File parsing logic remains the same)
-        # ...
+        parsed_events = parse_log_file(uploaded_file)
+        df = pd.json_normalize(parsed_events)
+
+        if 'details.CEID' in df.columns:
+            df['EventName'] = pd.to_numeric(df['details.CEID'], errors='coerce').map(CEID_MAP)
+            if 'details.RCMD' in df.columns:
+                df['EventName'].fillna(df['details.RCMD'], inplace=True)
+            df['EventName'].fillna("Unknown", inplace=True)
+        else:
+            df['EventName'] = "Unknown"
+
+        if 'details.AlarmID' in df.columns:
+            df['AlarmDescription'] = pd.to_numeric(df['details.AlarmID'], errors='coerce').map(
+                {k: v['description'] for k, v in ALARM_DB.items()}
+            ).fillna('')
+        
         summary = analyze_data(df)
         eda_results = perform_eda(df)
 
-    # --- NEW: Tabbed Interface ---
+    # --- Tabbed Interface ---
     tab1, tab2 = st.tabs(["Main Dashboard", "Process Details"])
 
     with tab1:
         st.header("Job Performance Dashboard")
         st.markdown("---")
         
-        # --- MODIFIED: Main KPIs ---
         processing_time = summary['cycle_time_details']['total_processing_time_sec']
         panel_count = summary['panel_count']
         
@@ -58,7 +66,6 @@ if uploaded_file:
         st.header("Process Details")
         st.markdown("---")
 
-        # --- NEW: Mapping Metrics ---
         st.subheader("Magazine Mapping Performance")
         c1, c2, c3 = st.columns(3)
         c1.metric("Mapping Start Time", summary['mapping_details']['start_time'])
@@ -67,27 +74,51 @@ if uploaded_file:
         
         st.markdown("---")
 
-        # --- NEW: Panel & Slot Details ---
         st.subheader("Panel & Slot Details")
         col1, col2 = st.columns([1, 2])
         with col1:
             st.write("**Unique Panel IDs Found**")
-            st.dataframe(pd.DataFrame(summary['panel_info']['panel_ids'], columns=["Panel ID"]), hide_index=True)
+            if summary['panel_info']['panel_ids']:
+                st.dataframe(pd.DataFrame(summary['panel_info']['panel_ids'], columns=["Panel ID"]), hide_index=True)
+            else:
+                st.info("No Panel IDs found.")
         with col2:
             st.write("**Panel to Magazine Slot Map**")
-            st.dataframe(summary['panel_info']['panel_slot_map'], hide_index=True, use_container_width=True)
+            if not summary['panel_info']['panel_slot_map'].empty:
+                st.dataframe(summary['panel_info']['panel_slot_map'], hide_index=True, use_container_width=True)
+            else:
+                st.info("No Panel/Slot mapping found.")
 
         st.markdown("---")
 
-        # --- NEW: Cycle Time Chart ---
         st.subheader("Cycle Time per Panel")
         if not summary['cycle_time_details']['cycle_times'].empty:
             st.line_chart(summary['cycle_time_details']['cycle_times'])
         else:
             st.info("No cycle time data to display.")
     
-    # (EDA and Detailed Log sections remain the same)
-    # ...
+    with st.expander("Show Full Log Exploratory Data Analysis (EDA)"):
+        st.subheader("Event Frequency (Entire Log)")
+        if not eda_results['event_counts'].empty:
+            st.bar_chart(eda_results['event_counts'])
+        else:
+            st.info("No events to analyze.")
+        
+        st.subheader("Alarm Analysis (Entire Log)")
+        if not eda_results['alarm_counts'].empty:
+            st.write("Alarm Counts:")
+            st.bar_chart(eda_results['alarm_counts'])
+            st.write("Alarm Events Log:")
+            st.dataframe(eda_results['alarm_table'], use_container_width=True)
+        else:
+            st.success("✅ No Alarms Found in the Entire Log")
 
+    st.header("Detailed Event Log")
+    if not df.empty:
+        cols = ["timestamp", "EventName", "details.AlarmID", "AlarmDescription", "details.LotID", "details.PanelCount", "details.MagazineID", "details.OperatorID"]
+        display_cols = [col for col in cols if col in df.columns]
+        st.dataframe(df[display_cols].style.format(na_rep='-'), hide_index=True, use_container_width=True)
+    else:
+        st.warning("No meaningful events were found.")
 else:
     st.title("Welcome"); st.info("⬅️ Please upload a log file to begin.")
