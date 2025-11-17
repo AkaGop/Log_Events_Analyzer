@@ -1,10 +1,9 @@
-# analyzer.py
+# log_analyzer/analyzer.py
 import pandas as pd
 from datetime import datetime
-from config import ALARM_DB, CEID_MAP
+from .config import ALARM_DB, CEID_MAP
 
 def get_mapping_details(df: pd.DataFrame) -> dict:
-    # ... (this function remains the same)
     details = {
         "start_time": "N/A",
         "end_time": "N/A",
@@ -29,7 +28,6 @@ def get_mapping_details(df: pd.DataFrame) -> dict:
     return details
 
 def get_panel_slot_map(df: pd.DataFrame) -> dict:
-    # ... (this function remains the same)
     panel_info = {
         "panel_ids": [],
         "panel_slot_map": pd.DataFrame()
@@ -48,9 +46,7 @@ def get_panel_slot_map(df: pd.DataFrame) -> dict:
             
     return panel_info
 
-# NEW FUNCTION: To calculate cycle times
 def get_cycle_time_details(df: pd.DataFrame) -> dict:
-    """Calculates total processing time and per-panel cycle times."""
     details = {
         "total_processing_time_sec": 0.0,
         "cycle_times": pd.DataFrame()
@@ -69,15 +65,12 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
     
     details["total_processing_time_sec"] = (t_end - t_start).total_seconds()
     
-    # Calculate cycle time for each panel
     loaded_events = df[df['EventName'] == 'LoadedToTool'].sort_values('timestamp').copy()
     if not loaded_events.empty:
         loaded_events['timestamp_dt'] = pd.to_datetime(loaded_events['timestamp'], format="%Y/%m/%d %H:%M:%S.%f")
-        # The first cycle time is from LoadStarted to the first panel loaded
         first_panel_time = loaded_events['timestamp_dt'].iloc[0]
         initial_cycle_duration = (first_panel_time - t_start).total_seconds()
         
-        # Subsequent cycle times are the difference between consecutive panel loads
         cycle_durations = loaded_events['timestamp_dt'].diff().dt.total_seconds().fillna(initial_cycle_duration)
         
         cycle_df = pd.DataFrame({
@@ -88,10 +81,33 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
         
     return details
 
-# (perform_eda and format_time functions remain the same)
-# ...
+def perform_eda(df: pd.DataFrame) -> dict:
+    eda_results = {}
+    if 'EventName' in df.columns:
+        eda_results['event_counts'] = df['EventName'].value_counts()
+    else:
+        eda_results['event_counts'] = pd.Series(dtype='int64')
 
-# MODIFIED: analyze_data function is now more modular
+    if 'details.AlarmID' in df.columns and 'AlarmDescription' in df.columns:
+        alarm_events = df[df['EventName'].isin(['Alarm Set', 'AlarmSet'])].copy()
+        if not alarm_events.empty:
+            eda_results['alarm_counts'] = alarm_events['AlarmDescription'].value_counts()
+            display_cols = ['timestamp', 'EventName', 'details.AlarmID', 'AlarmDescription']
+            eda_results['alarm_table'] = alarm_events[[c for c in display_cols if c in alarm_events.columns]]
+        else:
+            eda_results['alarm_counts'] = pd.Series(dtype='int64')
+            eda_results['alarm_table'] = pd.DataFrame()
+    else:
+        eda_results['alarm_counts'] = pd.Series(dtype='int64')
+        eda_results['alarm_table'] = pd.DataFrame()
+    return eda_results
+
+def format_time(timestamp_str: str) -> str:
+    try:
+        return datetime.strptime(timestamp_str, "%Y/%m/%d %H:%M:%S.%f").strftime("%H:%M:%S")
+    except ValueError:
+        return timestamp_str
+
 def analyze_data(df: pd.DataFrame) -> dict:
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
@@ -102,7 +118,6 @@ def analyze_data(df: pd.DataFrame) -> dict:
     
     if df.empty: return summary
 
-    # --- Context Extraction ---
     if 'details.OperatorID' in df.columns: summary['operator_ids'] = df['details.OperatorID'].dropna().unique().tolist()
     if 'details.MagazineID' in df.columns: summary['magazine_ids'] = df['details.MagazineID'].dropna().unique().tolist()
     if 'details.LotID' in df.columns: summary['lot_ids'] = df['details.LotID'].dropna().unique().tolist()
@@ -110,12 +125,10 @@ def analyze_data(df: pd.DataFrame) -> dict:
         status_df = df[df['EventName'].isin(['Control State Local', 'Control State Remote'])]
         summary['machine_statuses'] = status_df['EventName'].str.replace("Control State ", "").unique().tolist()
         
-    # --- New Modular Analysis ---
     summary['mapping_details'] = get_mapping_details(df)
     summary['panel_info'] = get_panel_slot_map(df)
-    summary['cycle_time_details'] = get_cycle_time_details(df) # New
+    summary['cycle_time_details'] = get_cycle_time_details(df)
     
-    # --- Job and Downtime Analysis ---
     start_events = df[df['EventName'] == 'LOADSTART']
     if not start_events.empty:
         first_start_event = start_events.iloc[0]
@@ -124,8 +137,5 @@ def analyze_data(df: pd.DataFrame) -> dict:
         
         end_events = df[df['EventName'] == 'LoadToToolCompleted']
         summary['job_status'] = "Completed" if not end_events.empty else "Did not complete"
-
-    # (Downtime calculation logic remains the same)
-    # ...
             
     return summary
