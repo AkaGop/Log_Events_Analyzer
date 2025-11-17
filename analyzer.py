@@ -1,7 +1,7 @@
-# log_analyzer/analyzer.py
+# analyzer.py
 import pandas as pd
 from datetime import datetime
-from .config import ALARM_DB, CEID_MAP
+from config import ALARM_DB, CEID_MAP
 
 def get_mapping_details(df: pd.DataFrame) -> dict:
     details = {
