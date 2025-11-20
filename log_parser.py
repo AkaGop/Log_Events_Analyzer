@@ -20,17 +20,21 @@ def _parse_s6f11_report(full_text: str) -> dict:
         rptid_index = next(i for i, val in enumerate(payload) if val.isdigit() and int(val) in RPTID_MAP)
         rptid = int(payload[rptid_index])
         
-        data['RPTID'] = rptid
-        data_payload = payload[rptid_index + 1:]
-        
-        if rptid == 101 and len(data_payload) > 1:
-            data['AlarmID'] = data_payload[1]
-
-        data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
-        
-        for i, name in enumerate(RPTID_MAP.get(rptid, [])):
-            if i < len(data_payload_filtered):
-                data[name] = data_payload_filtered[i]
+        if rptid in RPTID_MAP:
+            data['RPTID'] = rptid
+            data_payload = payload[rptid_index + 1:]
+            
+            # --- THIS IS THE FIX ---
+            # Filter out timestamps AND any empty strings to ensure correct data alignment.
+            data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit()) and val != '']
+            # --- END FIX ---
+            
+            for i, name in enumerate(RPTID_MAP.get(rptid, [])):
+                if i < len(data_payload_filtered):
+                    data[name] = data_payload_filtered[i]
+            
+            if rptid == 101 and data.get('AlarmID') is None and len(data_payload_filtered) > 0:
+                data['AlarmID'] = data_payload_filtered[0]
             
     except (StopIteration, ValueError, IndexError):
         pass 
