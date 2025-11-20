@@ -39,7 +39,7 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
     end_events = df[df['EventName'] == 'LoadToToolCompleted']
     if not start_events.empty and not end_events.empty:
         t_start = pd.to_datetime(start_events.iloc[0]['timestamp'])
-        t_end = pd.to_datetime(end_events.iloc[0]['timestamp'])
+        t_end = pd.to_datetime(end_events.iloc[-1]['timestamp']) # Use the last completion event
         details["total_processing_time_sec"] = (t_end - t_start).total_seconds()
         loaded_events = df[df['EventName'] == 'LoadedToTool'].sort_values('timestamp').copy()
         if not loaded_events.empty:
@@ -110,5 +110,46 @@ def analyze_data(df: pd.DataFrame) -> dict:
         summary['job_status'] = "Completed" if not end_events.empty else "Did not complete"
             
     # Downtime calculation logic
-    # ... (This logic remains correct and unchanged)
+    downtime_incidents = []
+    total_downtime = 0.0
+    stoppable_alarm_codes = {k for k, v in ALARM_DB.items() if v.get('level') in ['Error', 'Alarm']}
+    
+    if 'details.AlarmID' in df.columns:
+        numeric_alarm_ids = pd.to_numeric(df['details.AlarmID'], errors='coerce')
+        fault_events = df[numeric_alarm_ids.isin(stoppable_alarm_codes)].copy()
+        
+        full_log_list = df.to_dict('records')
+        for index, alarm_row in fault_events.iterrows():
+            try:
+                alarm_time = datetime.strptime(alarm_row['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+                alarm_id = int(alarm_row['details.AlarmID'])
+                alarm_info = ALARM_DB.get(alarm_id, {'description': 'Unknown Alarm'})
+                alarm_log_index = df.index.get_loc(index)
+            except (KeyError, ValueError, TypeError):
+                continue
+
+            recovery_time = None
+            for i in range(alarm_log_index + 1, len(full_log_list)):
+                next_event = full_log_list[i]
+                if next_event.get('EventName') != 'Alarm Set':
+                    recovery_time = datetime.strptime(next_event['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+                    break
+            
+            if recovery_time is None and len(df) > 0:
+                recovery_time = datetime.strptime(df.iloc[-1]['timestamp'], "%Y/%m/%d %H:%M:%S.%f")
+
+            if recovery_time:
+                duration = (recovery_time - alarm_time).total_seconds()
+                if duration > 0:
+                    total_downtime += duration
+                    downtime_incidents.append({
+                        'Alarm Time': alarm_time.strftime("%H:%M:%S"),
+                        'Alarm Description': alarm_info.get('description', 'Unknown'),
+                        'Recovery Time': recovery_time.strftime("%H:%M:%S"),
+                        'Downtime (sec)': round(duration, 2)
+                    })
+
+    summary['total_downtime_sec'] = round(total_downtime, 2)
+    summary['alarms_with_context'] = downtime_incidents
+
     return summary
