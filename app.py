@@ -34,6 +34,7 @@ if uploaded_file:
         summary = analyze_data(df)
         eda_results = perform_eda(df)
 
+    # --- Tabbed Interface ---
     tab1, tab2 = st.tabs(["Main Dashboard", "Process Details"])
 
     with tab1:
@@ -89,6 +90,16 @@ if uploaded_file:
                 st.info("No Panel/Slot mapping found.")
 
         st.markdown("---")
+        
+        st.subheader("Lot to Panel ID Mapping")
+        if summary['lot_to_panel_map']:
+            for lot_id, panel_ids in summary['lot_to_panel_map'].items():
+                st.write(f"**Lot ID:** `{lot_id}`")
+                st.dataframe(pd.DataFrame(panel_ids, columns=["Panel ID"]), hide_index=True)
+        else:
+            st.info("No Lot to Panel mapping found in this log.")
+
+        st.markdown("---")
 
         st.subheader("Cycle Time per Panel")
         if not summary['cycle_time_details']['cycle_times'].empty:
@@ -116,7 +127,11 @@ if uploaded_file:
     if not df.empty:
         cols = ["timestamp", "EventName", "details.AlarmID", "AlarmDescription", "details.LotID", "details.PanelCount", "details.MagazineID", "details.OperatorID"]
         display_cols = [col for col in cols if col in df.columns]
-        st.dataframe(df[display_cols].style.format(na_rep='-'), hide_index=True, use_container_width=True)
+
+        display_df = df[display_cols].copy()
+        display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y/%m/%d %H:%M:%S')
+
+        st.dataframe(display_df.style.format(na_rep='-'), hide_index=True, use_container_width=True)
     else:
         st.warning("No meaningful events were found.")
 else:
