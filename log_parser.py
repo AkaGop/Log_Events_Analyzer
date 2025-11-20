@@ -15,24 +15,27 @@ def _parse_s6f11_report(full_text: str) -> dict:
     if "Alarm" in CEID_MAP.get(data['CEID'], ''): data['AlarmID'] = data['CEID']
     
     payload = flat_values[2:]
-    rptid, rptid_index = None, -1
-    for i, val in enumerate(payload):
-        if val.isdigit():
-            rptid, rptid_index = int(val), i
-            break
-            
-    if rptid in RPTID_MAP:
-        data['RPTID'] = rptid
-        data_payload = payload[rptid_index + 1:]
+    try:
+        # Find the Report ID (RPTID), which is the first integer after the CEID.
+        rptid_index = next(i for i, val in enumerate(payload) if val.isdigit())
+        rptid = int(payload[rptid_index])
         
-        if rptid == 101 and len(data_payload) > 1:
-            data['AlarmID'] = data_payload[1]
-
-        data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
-        for i, name in enumerate(RPTID_MAP.get(rptid, [])):
-            if i < len(data_payload_filtered): data[name] = data_payload_filtered[i]
+        if rptid in RPTID_MAP:
+            data['RPTID'] = rptid
+            # The actual data follows the RPTID.
+            data_payload = payload[rptid_index + 1:]
             
-    elif data['CEID'] in [18, 113, 114]:
+            # Filter out timestamps to align data correctly with RPTID_MAP keys
+            data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
+            
+            # Map the extracted values to their names from RPTID_MAP
+            for i, name in enumerate(RPTID_MAP.get(rptid, [])):
+                if i < len(data_payload_filtered):
+                    data[name] = data_payload_filtered[i]
+    except (StopIteration, ValueError, IndexError):
+        pass # If no valid RPTID is found, we just skip parsing the details.
+
+    if data['CEID'] in [18, 113, 114]:
         data['AlarmID'] = data['CEID']
 
     return data
