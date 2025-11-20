@@ -1,4 +1,3 @@
-
 # app.py
 import streamlit as st
 import pandas as pd
@@ -29,13 +28,12 @@ if uploaded_file:
 
         if 'details.AlarmID' in df.columns:
             df['AlarmDescription'] = pd.to_numeric(df['details.AlarmID'], errors='coerce').map(
-                {k: v['description'] for k, v in ALARM_DB.items()}
+                {k: v.get('description', 'Unknown') for k, v in ALARM_DB.items()}
             ).fillna('')
         
         summary = analyze_data(df)
         eda_results = perform_eda(df)
 
-    # --- Tabbed Interface ---
     tab1, tab2 = st.tabs(["Main Dashboard", "Process Details"])
 
     with tab1:
