@@ -1,4 +1,3 @@
-
 # log_parser.py
 import re
 from io import StringIO
@@ -25,8 +24,8 @@ def _parse_s6f11_report(full_text: str) -> dict:
             data_payload = payload[rptid_index + 1:]
             
             # --- THIS IS THE FIX ---
-            # Filter out timestamps AND any empty strings to ensure correct data alignment.
-            data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit()) and val != '']
+            # ONLY filter out timestamps. DO NOT filter out empty strings ('').
+            data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
             # --- END FIX ---
             
             for i, name in enumerate(RPTID_MAP.get(rptid, [])):
