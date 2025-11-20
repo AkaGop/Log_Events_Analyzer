@@ -39,7 +39,7 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
     end_events = df[df['EventName'] == 'LoadToToolCompleted']
     if not start_events.empty and not end_events.empty:
         t_start = pd.to_datetime(start_events.iloc[0]['timestamp'])
-        t_end = pd.to_datetime(end_events.iloc[-1]['timestamp']) # Use the last completion event
+        t_end = pd.to_datetime(end_events.iloc[-1]['timestamp'])
         details["total_processing_time_sec"] = (t_end - t_start).total_seconds()
         loaded_events = df[df['EventName'] == 'LoadedToTool'].sort_values('timestamp').copy()
         if not loaded_events.empty:
@@ -109,7 +109,6 @@ def analyze_data(df: pd.DataFrame) -> dict:
         end_events = df[df['EventName'] == 'LoadToToolCompleted']
         summary['job_status'] = "Completed" if not end_events.empty else "Did not complete"
             
-    # Downtime calculation logic
     downtime_incidents = []
     total_downtime = 0.0
     stoppable_alarm_codes = {k for k, v in ALARM_DB.items() if v.get('level') in ['Error', 'Alarm']}
