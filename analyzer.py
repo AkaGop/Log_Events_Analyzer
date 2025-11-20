@@ -1,3 +1,4 @@
+
 # analyzer.py
 import pandas as pd
 from datetime import datetime
@@ -38,13 +39,18 @@ def get_panel_slot_map(df: pd.DataFrame) -> dict:
     if 'details.PanelID' in df.columns and 'details.SlotID' in df.columns:
         id_read_events = df[df['EventName'] == 'IDRead'].copy()
         if not id_read_events.empty:
-            slot_map_df = id_read_events[['details.PanelID', 'details.SlotID']].dropna().drop_duplicates()
-            slot_map_df.rename(columns={'details.PanelID': 'Panel ID', 'details.SlotID': 'Slot'}, inplace=True)
-            slot_map_df['Slot'] = pd.to_numeric(slot_map_df['Slot'])
-            slot_map_df = slot_map_df.sort_values(by='Slot').reset_index(drop=True)
-            
-            panel_info["panel_ids"] = slot_map_df['Panel ID'].unique().tolist()
-            panel_info["panel_slot_map"] = slot_map_df
+            # --- THIS IS THE FIX ---
+            # Only drop rows if the specific columns 'details.PanelID' or 'details.SlotID' are empty.
+            slot_map_df = id_read_events[['details.PanelID', 'details.SlotID']].dropna(subset=['details.PanelID', 'details.SlotID']).drop_duplicates()
+            # --- END FIX ---
+
+            if not slot_map_df.empty:
+                slot_map_df.rename(columns={'details.PanelID': 'Panel ID', 'details.SlotID': 'Slot'}, inplace=True)
+                slot_map_df['Slot'] = pd.to_numeric(slot_map_df['Slot'])
+                slot_map_df = slot_map_df.sort_values(by='Slot').reset_index(drop=True)
+                
+                panel_info["panel_ids"] = slot_map_df['Panel ID'].unique().tolist()
+                panel_info["panel_slot_map"] = slot_map_df
             
     return panel_info
 
@@ -85,7 +91,7 @@ def get_cycle_time_details(df: pd.DataFrame) -> dict:
 def get_lot_to_panel_map(df: pd.DataFrame) -> dict:
     """Correlates IDRead events to the last preceding LOADSTART command."""
     start_events = df[df['EventName'] == 'LOADSTART'][['timestamp', 'details.LotID']].dropna().rename(columns={'details.LotID': 'LotID'})
-    id_read_events = df[df['EventName'] == 'IDRead'][['timestamp', 'details.PanelID']].dropna().rename(columns={'details.PanelID': 'PanelID'})
+    id_read_events = df[df['EventName'] == 'IDRead'][['timestamp', 'details.PanelID']].dropna(subset=['details.PanelID']).rename(columns={'details.PanelID': 'PanelID'})
 
     if start_events.empty or id_read_events.empty:
         return {}
@@ -100,19 +106,20 @@ def get_lot_to_panel_map(df: pd.DataFrame) -> dict:
         direction='backward'
     )
 
+    if 'LotID' not in merged_df.columns or merged_df['LotID'].isnull().all():
+        return {}
+
     lot_panel_map = merged_df.groupby('LotID')['PanelID'].unique().apply(list).to_dict()
     
     return lot_panel_map
 
 def perform_eda(df: pd.DataFrame) -> dict:
-    # --- THIS IS THE FIX ---
-    # Initialize eda_results at the beginning of the function.
+    """Performs exploratory data analysis on the entire log."""
     eda_results = {
         'event_counts': pd.Series(dtype='int64'),
         'alarm_counts': pd.Series(dtype='int64'),
         'alarm_table': pd.DataFrame()
     }
-    # --- END FIX ---
 
     if 'EventName' in df.columns:
         eda_results['event_counts'] = df['EventName'].value_counts()
@@ -127,12 +134,14 @@ def perform_eda(df: pd.DataFrame) -> dict:
     return eda_results
 
 def format_time(timestamp_str: str) -> str:
+    """Formats a timestamp string to H:M:S."""
     try:
         return datetime.strptime(timestamp_str, "%Y/%m/%d %H:%M:%S.%f").strftime("%H:%M:%S")
     except ValueError:
         return timestamp_str
 
 def analyze_data(df: pd.DataFrame) -> dict:
+    """Main function to run all analyses and return a summary dictionary."""
     summary = {
         "job_status": "No Job Found", "lot_id": "N/A", "panel_count": 0,
         "total_downtime_sec": 0.0, "alarms_with_context": [],
