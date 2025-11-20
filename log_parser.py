@@ -7,6 +7,7 @@ def _parse_s6f11_report(full_text: str) -> dict:
     data = {}
     tokens = re.findall(r"<(?:A|U\d|B)\s\[\d+\]\s(?:'([^']*)'|(\d+))>", full_text)
     flat_values = [s if s else i for s, i in tokens]
+    
     if len(flat_values) < 2: return {}
     try:
         data['DATAID'], data['CEID'] = int(flat_values[0]), int(flat_values[1])
@@ -14,29 +15,45 @@ def _parse_s6f11_report(full_text: str) -> dict:
 
     if "Alarm" in CEID_MAP.get(data['CEID'], ''): data['AlarmID'] = data['CEID']
     
-    payload = flat_values[2:]
+    # --- THIS IS THE FIX ---
+    # More robust parsing logic that does not assume fixed nesting.
     try:
-        rptid_index = next(i for i, val in enumerate(payload) if val.isdigit() and int(val) in RPTID_MAP)
-        rptid = int(payload[rptid_index])
+        # Split the full text into lines to analyze structure
+        lines = [line.strip() for line in full_text.split('\n') if line.strip()]
+        rptid_index = -1
         
-        if rptid in RPTID_MAP:
+        # Find the line that contains the RPTID
+        for i, line in enumerate(lines):
+            match = re.search(r"<U\d\s\[1\]\s(\d+)>", line)
+            if match and int(match.group(1)) in RPTID_MAP:
+                rptid_index = i
+                break
+
+        if rptid_index != -1:
+            # Re-extract tokens starting from the line containing the RPTID
+            rptid_block_text = "\n".join(lines[rptid_index:])
+            rptid_tokens = re.findall(r"<(?:A|U\d|B)\s\[\d+\]\s(?:'([^']*)'|(\d+))>", rptid_block_text)
+            rptid_flat_values = [s if s else i for s, i in rptid_tokens]
+
+            rptid = int(rptid_flat_values[0])
             data['RPTID'] = rptid
-            data_payload = payload[rptid_index + 1:]
             
-            # --- THIS IS THE FIX ---
-            # ONLY filter out timestamps. DO NOT filter out empty strings ('').
+            # The data payload is everything after the RPTID
+            data_payload = rptid_flat_values[1:]
+            
+            # Filter out timestamps, but KEEP empty strings as they are valid placeholders
             data_payload_filtered = [val for val in data_payload if not (len(val) >= 14 and val.isdigit())]
-            # --- END FIX ---
-            
+
             for i, name in enumerate(RPTID_MAP.get(rptid, [])):
                 if i < len(data_payload_filtered):
                     data[name] = data_payload_filtered[i]
             
             if rptid == 101 and data.get('AlarmID') is None and len(data_payload_filtered) > 0:
                 data['AlarmID'] = data_payload_filtered[0]
-            
+
     except (StopIteration, ValueError, IndexError):
         pass 
+    # --- END FIX ---
 
     if data['CEID'] in [18, 113, 114]:
         data['AlarmID'] = data['CEID']
